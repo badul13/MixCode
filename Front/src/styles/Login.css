@@ -1,0 +1,19 @@
+.login-container {
+    margin: auto;
+    text-align: center;
+    padding: 30px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 0 15px rgba(0,0,0,0.1);
+  }
+  
+  .login-container input {
+    display: block;
+    margin: 10px auto;
+    padding: 10px;
+    width: 200px;
+  }
+  
+  .login-container button {
+    padding: 10px 20px;
+  }
