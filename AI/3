@@ -1,0 +1,118 @@
+import os
+import torch
+import threading
+from flask import Flask, request, jsonify
+from typing import List
+from dotenv import load_dotenv
+from transformers import PreTrainedTokenizerFast, BartForConditionalGeneration
+
+from naver_news_crawler import NaverNewsCrawler
+from kobert_classifier import predict_prob
+from rag_engine import vector_store, generate_answer
+
+load_dotenv()
+
+app = Flask(__name__)
+crawler = NaverNewsCrawler()
+
+# 요약 모델 로드
+tokenizer = PreTrainedTokenizerFast.from_pretrained("digit82/kobart-summarization")
+model = BartForConditionalGeneration.from_pretrained("digit82/kobart-summarization")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+def summarize_docs_korean(docs: List[str], max_docs: int = 3) -> List[str]:
+    summaries = []
+    for doc in docs[:max_docs]:
+        try:
+            input_ids = tokenizer.encode(doc[:1024], return_tensors="pt", max_length=1024, truncation=True).to(device)
+            summary_ids = model.generate(input_ids, max_length=128, min_length=32, length_penalty=2.0, num_beams=4, early_stopping=True)
+            summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+            summaries.append(summary)
+        except Exception as e:
+            summaries.append(f"요약 실패: {e}")
+    return summaries
+
+@app.route("/verify", methods=["POST"])
+def verify_news():
+    try:
+        data = request.get_json()
+        text = data["text"]
+
+        probs = predict_prob(text)
+        real_prob, fake_prob = probs[0], probs[1]
+
+        keywords = crawler.extract_keywords(text)
+        urls = crawler.search_news_urls(keywords)
+        docs = crawler.crawl_articles(urls)
+
+        if not docs:
+            return jsonify({
+                "error": "관련 뉴스 기사 없음",
+                "real": round(real_prob, 3),
+                "fake": round(fake_prob, 3),
+                "keywords": keywords,
+                "urls": urls,
+                "ragAnswer": "",
+                "confidence": 0.0,
+                "summaries": []
+            }), 200
+
+        vector_store.build_index(docs)
+        top_docs = vector_store.search(text, top_k=3)
+        answer, confidence = generate_answer(text, top_docs)
+        summaries = summarize_docs_korean(top_docs)
+
+        return jsonify({
+            "real": round(real_prob, 3),
+            "fake": round(fake_prob, 3),
+            "keywords": keywords,
+            "urls": urls,
+            "ragAnswer": answer,
+            "confidence": round(confidence, 3),
+            "summaries": summaries
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def cli_loop():
+    print("뉴스 진위 예측 + RAG 기반 뉴스 검색 챗봇 시작. 종료하려면 'exit' 입력\n")
+    while True:
+        text = input("문장을 입력하세요: ")
+        if text.lower() == "exit":
+            print("챗봇을 종료합니다.")
+            break
+        try:
+            probs = predict_prob(text)
+            real_prob, fake_prob = probs[0], probs[1]
+            keywords = crawler.extract_keywords(text)
+            urls = crawler.search_news_urls(keywords)
+            print(f"\n✅ 진짜뉴스 확률: {real_prob * 100:.2f}%")
+            print(f"❌ 가짜뉴스 확률: {fake_prob * 100:.2f}%")
+            print("🔑 키워드:", ", ".join(keywords))
+            print("🔗 URL 목록:", urls)
+
+            docs = crawler.crawl_articles(urls)
+            if not docs:
+                print("⚠️ 관련 뉴스 없음\n")
+                continue
+
+            vector_store.build_index(docs)
+            top_docs = vector_store.search(text, top_k=3)
+            answer, confidence = generate_answer(text, top_docs)
+            summaries = summarize_docs_korean(top_docs)
+
+            print(f"\n💡 RAG 응답:\n{answer}")
+            print(f"🔍 신뢰도: {confidence:.3f}")
+            print("📝 요약:")
+            for i, s in enumerate(summaries, 1):
+                print(f"{i}. {s}")
+            print("\n=====================\n")
+
+        except Exception as e:
+            print(f"❗ 오류 발생: {e}")
+
+if __name__ == "__main__":
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)).start()
+    cli_loop()
