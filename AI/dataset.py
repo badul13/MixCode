@@ -16,7 +16,7 @@ def unzip_nested_zip_files(folder_path):
             if file.endswith('.zip'):
                 zip_path = os.path.join(root, file)
                 extract_to = os.path.splitext(zip_path)[0]
-                
+
                 try:
                     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                         zip_ref.extractall(extract_to)
@@ -50,16 +50,20 @@ def extract_newscontent_from_json(directory):
                 try:
                     with open(os.path.join(root, file), 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                        # 데이터 형식이 리스트면 반복
-                        if isinstance(data, list):
-                            for item in data:
-                                content = item.get('sourceDataInfo', {}).get('newsContent', '')
-                                if content:
-                                    result.append({'content': content})
-                        elif isinstance(data, dict):
-                            content = data.get('sourceDataInfo', {}).get('newsContent', '')
-                            if content:
-                                result.append({'content': content})
+
+                        content = ""
+                        if isinstance(data, dict):
+                            # 1. 기존 newsContent 키 먼저 시도
+                            content = data.get('labeledDataInfo', {}).get('newsContent', '')
+
+                            # 2. 없으면 referSentenceInfo를 이어붙임
+                            if not content:
+                                sentences = data.get('labeledDataInfo', {}).get('referSentenceInfo', [])
+                                if isinstance(sentences, list):
+                                    content = " ".join(s.get("sentenceContent", "") for s in sentences if isinstance(s, dict))
+
+                        if content:
+                            result.append({'content': content})
                 except Exception as e:
                     print(f"⚠️ JSON 로드 실패: {file}, 이유: {e}")
     return result
@@ -67,10 +71,10 @@ def extract_newscontent_from_json(directory):
 # 4. 메인 함수
 def main():
     # 경로 설정
-    zip1 = "opendata1.zip"
-    zip2 = "opendata2.zip"
-    extract_path1 = "data1"
-    extract_path2 = "data2"
+    zip1 = "/content/drive/MyDrive/ColabNotebooks/opendata1.zip"
+    zip2 = "/content/drive/MyDrive/ColabNotebooks/opendata2.zip"
+    extract_path1 = "/content/data1"
+    extract_path2 = "/content/data2"
 
     # 압축 해제
     print("🔽 ZIP 압축 해제 중...")
@@ -95,12 +99,8 @@ def main():
 
     # 진짜 뉴스 로드
     print("🔽 진짜 뉴스 CSV 로드 중...")
-    newsdata_path = "newsdata.csv"
-    try:
-        real_df = pd.read_csv(newsdata_path, encoding='utf-8-sig')
-    except UnicodeDecodeError:
-        print("🔁 utf-8-sig 실패 → cp949 재시도")
-        real_df = pd.read_csv(newsdata_path, encoding='euc-kr')
+    newsdata_path = "/content/newsdata.csv"
+    real_df = pd.read_csv(newsdata_path, encoding='cp949')
 
     text_col_real = None
     for col in real_df.columns:
@@ -114,12 +114,14 @@ def main():
     real_df['label'] = 0
 
     # 병합 및 저장
-    final_df = pd.concat([fake_df, real_df], ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
-    output_path = "opendata_output.csv"
+    final_df = pd.concat([fake_df, real_df], ignore_index=True)
+    final_df = final_df[final_df['content'].str.strip() != ''] 
+    final_df = final_df.sample(frac=1, random_state=42).reset_index(drop=True)
+    output_path = "/content/opendata_output.csv"
     final_df.to_csv(output_path, index=False, encoding='utf-8-sig')
     print(f"✅ 최종 CSV 저장 완료: {output_path}")
     print(final_df.head())
 
-# 🔄 실행
+# 실행
 if __name__ == "__main__":
     main()
