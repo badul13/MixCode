@@ -86,7 +86,7 @@ def evaluate(model, loader, device):
 
 # 5. 메인 실행부
 def main():
-    csv_path = '/content/opendata_output.csv'
+    csv_path = 'opendata_output.csv'
     full_df = prepare_datasets(csv_path)
 
     train_df, val_df = train_test_split(full_df, test_size=0.2, stratify=full_df['label'], random_state=42)
@@ -111,8 +111,8 @@ def main():
         train_loss = train_epoch(model, train_loader, optimizer, device)
         val_acc = evaluate(model, val_loader, device)
         print(f"✅ Training Loss: {train_loss:.4f} | 🔍 Validation Acc: {val_acc:.4f}")
-        torch.save(model.state_dict(), f"/content/news_classifier.pt")
-        print(f"💾 모델 저장 완료: /content/news_classifier.pt")
+        torch.save(model.state_dict(), f"news_classifier.pt")
+        print(f"💾 모델 저장 완료: news_classifier.pt")
 
     print("🎉 훈련 완료")
 

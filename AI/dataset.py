@@ -53,11 +53,11 @@ def extract_newscontent_from_json(directory):
                         # 데이터 형식이 리스트면 반복
                         if isinstance(data, list):
                             for item in data:
-                                content = item.get('labeledDataInfo', {}).get('newsContent', '')
+                                content = item.get('sourceDataInfo', {}).get('newsContent', '')
                                 if content:
                                     result.append({'content': content})
                         elif isinstance(data, dict):
-                            content = data.get('labeledDataInfo', {}).get('newsContent', '')
+                            content = data.get('sourceDataInfo', {}).get('newsContent', '')
                             if content:
                                 result.append({'content': content})
                 except Exception as e:
@@ -67,10 +67,10 @@ def extract_newscontent_from_json(directory):
 # 4. 메인 함수
 def main():
     # 경로 설정
-    zip1 = "/content/drive/MyDrive/ColabNotebooks/opendata1.zip"
-    zip2 = "/content/drive/MyDrive/ColabNotebooks/opendata2.zip"
-    extract_path1 = "/content/data1"
-    extract_path2 = "/content/data2"
+    zip1 = "opendata1.zip"
+    zip2 = "opendata2.zip"
+    extract_path1 = "data1"
+    extract_path2 = "data2"
 
     # 압축 해제
     print("🔽 ZIP 압축 해제 중...")
@@ -95,8 +95,12 @@ def main():
 
     # 진짜 뉴스 로드
     print("🔽 진짜 뉴스 CSV 로드 중...")
-    newsdata_path = "/content/newsdata.csv"
-    real_df = pd.read_csv(newsdata_path, encoding='utf-8-sig')
+    newsdata_path = "newsdata.csv"
+    try:
+        real_df = pd.read_csv(newsdata_path, encoding='utf-8-sig')
+    except UnicodeDecodeError:
+        print("🔁 utf-8-sig 실패 → cp949 재시도")
+        real_df = pd.read_csv(newsdata_path, encoding='euc-kr')
 
     text_col_real = None
     for col in real_df.columns:
@@ -111,7 +115,7 @@ def main():
 
     # 병합 및 저장
     final_df = pd.concat([fake_df, real_df], ignore_index=True).sample(frac=1, random_state=42).reset_index(drop=True)
-    output_path = "/content/opendata_output.csv"
+    output_path = "opendata_output.csv"
     final_df.to_csv(output_path, index=False, encoding='utf-8-sig')
     print(f"✅ 최종 CSV 저장 완료: {output_path}")
     print(final_df.head())
