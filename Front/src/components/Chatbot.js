@@ -5,37 +5,56 @@ import "../styles/Chatbot.css";
 // 텍스트를 JSON으로 안전하게 파싱하는 함수
 function safeParseTextToJson(text) {
   try {
-    const realProb =
-      parseFloat(text.match(/진짜뉴스 확률: (\d+\.\d+)%/)?.[1]) / 100 || 0;
-    const fakeProb =
-      parseFloat(text.match(/가짜뉴스 확률: (\d+\.\d+)%/)?.[1]) / 100 || 0;
     const keywords =
       text
-        .match(/🔑 주요 키워드:\n([\s\S]*?)\n\n/)?.[1]
+        .match(/• 핵심 키워드: (.+)/)?.[1]
         .split(",")
         .map((s) => s.trim()) || [];
+
     const urls =
       [...text.matchAll(/- (https?:\/\/\S+)/g)].map((m) => m[1]) || [];
-    const rag = text.match(/💡 RAG 답변:\n([\s\S]*?)\n\n🔍/)?.[1]?.trim() || "";
-    const score = parseFloat(text.match(/신뢰도 점수: (\d+\.\d+)/)?.[1]) || 0;
+
+    const rag =
+      text.match(/RAG 응답:\n([\s\S]*?)\n\n?요약:/)?.[1]?.trim() || "";
+
+    const summary =
+      text.match(/요약:\n([\s\S]*?)\n\n?(1단계|신뢰도)/)?.[1]?.trim() || "";
+
+    const score_model =
+      parseFloat(text.match(/신뢰도 \(모델 기반\): (\d+\.\d+)/)?.[1]) || 0;
+    const score_rag =
+      parseFloat(text.match(/신뢰도 \(RAG 기반\) ?: (\d+\.\d+)/)?.[1]) || 0;
+
+    const realProb =
+      parseFloat(text.match(/진짜뉴스 확률: (\d+\.\d+)/)?.[1]) / 100 || 0;
+    const fakeProb =
+      parseFloat(text.match(/가짜뉴스 확률: (\d+\.\d+)/)?.[1]) / 100 || 0;
+
+    const conclusion = text.match(/최종 판단:\n(.+)/)?.[1]?.trim() || "";
 
     return {
-      real_prob: realProb,
-      fake_prob: fakeProb,
       keywords,
       urls,
       rag,
-      score,
+      summary,
+      score_model,
+      score_rag,
+      real_prob: realProb,
+      fake_prob: fakeProb,
+      conclusion,
     };
   } catch (e) {
     console.error("파싱 실패:", e);
     return {
-      real_prob: 0,
-      fake_prob: 0,
       keywords: [],
       urls: [],
-      rag: "분석 실패",
-      score: 0,
+      rag: "",
+      summary: "",
+      score_model: 0,
+      score_rag: 0,
+      real_prob: 0,
+      fake_prob: 0,
+      conclusion: "분석 실패",
     };
   }
 }
@@ -47,39 +66,26 @@ function convertJsonToNatural(data) {
   const keywords = data.keywords.join(", ");
   const urls = data.urls.map((url) => `- ${url}`).join("\n");
 
-  const isReal = data.real_prob > data.fake_prob;
+  return `🔍 핵심 키워드: ${keywords}
 
-  const headline = isReal
-    ? "이 뉴스는 진짜일 가능성이 높아요."
-    : "이 뉴스는 가짜일 가능성이 높아요.";
+📎 관련 기사:
+${urls}
 
-  return `${headline}\n\n
-  🔎 분석 키워드는 "${keywords}"이며,\n
-  진짜뉴스 확률은 ${real}%, 가짜뉴스 확률은 **${fake}%**로 나타났습니다.\n\n
-  🧠 관련 기사 3건의 요약:\n
-  ${data.rag}\n\n
-  📎 관련 기사 링크:\n${urls}\n\n신뢰도 점수는 ${data.score.toFixed(
-    3
-  )}입니다. ${isReal ? "참고하실 만한 정보입니다." : "주의가 필요합니다."}`;
-}
+🧠 RAG 응답:
+${data.rag}
 
-// 백엔드에 파싱된 JSON 데이터를 저장하는 함수
-async function saveParsedJsonToBackend(data) {
-  try {
-    const response = await fetch("https://your-ngrok-id.ngrok.io/save-result", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data), // parsed JSON 그대로 전송
-    });
+📝 요약:
+${data.summary}
 
-    if (!response.ok) {
-      throw new Error("결과 저장 실패");
-    }
+📊 신뢰도:
+- 모델 기반: ${data.score_model.toFixed(3)}
+- RAG 기반: ${data.score_rag.toFixed(3)}
 
-    console.log("✅ 분석 결과가 성공적으로 저장되었습니다.");
-  } catch (error) {
-    console.error("❌ 결과 저장 오류:", error);
-  }
+✅ 진짜뉴스 확률: ${real}%
+❌ 가짜뉴스 확률: ${fake}%
+
+📌 최종 판단:
+${data.conclusion}`;
 }
 
 // 챗봇 컴포넌트
