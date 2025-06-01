@@ -1,0 +1,31 @@
+dataset.py
+1. 데이터 준비 및 전처리 (ZIP 해제 → JSON 파싱 → CSV 병합)
+- opendata1.zip, opendata2.zip 압축 해제 → 중첩 ZIP까지 모두 해제
+- JSON 파일에서 newsContent 또는 referSentenceInfo로 본문 추출
+- label=1 (가짜뉴스)로 저장
+- newsdata.csv에서 진짜뉴스(content 추출, label=0)
+- 가짜뉴스 + 진짜뉴스 합쳐서 /content/opendata_output.csv 저장
+
+model.py
+2. 모델 학습 (CSV 로드 → 데이터셋 생성 → 학습/검증 → 모델 저장)
+- CSV 파일 불러와서 content/label 추출
+- KcELECTRA 토크나이저로 토큰화
+- PyTorch Dataset & Dataloader 구성
+- 이진 분류 모델 훈련 (3 Epoch, AdamW)
+- 학습 후 /content/news_classifier.pt에 저장
+
+crawler.py
+서비스 API 및 CLI (Flask 서버 → 뉴스 크롤링 → RAG 응답 생성 → 진위 판별)
+요약 모델: KoBART (digit82/kobart-summarization)
+진위 판단 모델: 학습한 KoBERT 기반 분류기
+벡터 기반 RAG 검색: TF-IDF로 관련 기사 3개 검색
+뉴스 요약 + RAG 기반 질문 응답
+
+<판별방식>
+- STEP1: KoBERT 확률 (real vs fake)
+- STEP2: 관련 문서 수 기반 RAG 신뢰도
+- 최종 판단:
+진짜일 가능성 높음 (둘 다 높을 때)
+가짜일 가능성 높음 (fake 확률 높을 때)
+관련 문서 없으면 판단 유보
+불확실하면 재검토 권장
