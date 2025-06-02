@@ -2,6 +2,8 @@
 import React, { useEffect, useState, useRef } from "react";
 import "../styles/Chatbot.css";
 
+const token = localStorage.getItem("accessToken");
+
 // JSON 데이터를 자연어 문장으로 변환하는 함수
 function convertStructuredJsonToNatural(data) {
   const labelText =
@@ -10,39 +12,20 @@ function convertStructuredJsonToNatural(data) {
       : "🔴 이 뉴스는 **가짜 뉴스**로 판단됩니다.";
 
   return `📰 뉴스 제목:
-${data.news_title}
+${data.newsTitle}
 
 🧾 뉴스 본문:
-${data.test}
+${data.text}
 
 📌 요약:
 ${data.summary}
 
 🧠 RAG 응답:
-${data.rag_answer}
+${data.ragAnswer}
 
 📅 분석 시간: ${data.timestamp}
 
 ${labelText}`;
-}
-
-// DB 저장 요청 함수
-async function saveParsedJsonToBackend(data) {
-  try {
-    const response = await fetch("https://your-ngrok-id.ngrok.io/save-result", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      throw new Error("DB 저장 실패");
-    }
-
-    console.log("✅ DB에 저장 완료");
-  } catch (error) {
-    console.error("❌ DB 저장 오류:", error);
-  }
 }
 
 // 챗봇 컴포넌트
@@ -68,15 +51,22 @@ function Chatbot({ query, goHome }) {
   // AI 응답 요청 + 출력 + 저장
   const fetchResponse = async (q) => {
     try {
-      const response = await fetch("https://your-ngrok-id.ngrok.io/news/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: q }),
-      });
+      const response = await fetch(
+        "https://5ad2-112-166-124-76.ngrok-free.app/news/chat",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`, // 여기서 사용자 인증됨
+          },
+          body: JSON.stringify({ message: q }),
+        }
+      );
 
       if (!response.ok) throw new Error("백엔드 응답 오류");
 
-      const data = await response.json();
+      const responseData = await response.json();
+      const data = responseData.data; // ⚠️ 여기서 .data를 꺼내야 함
       const natural = convertStructuredJsonToNatural(data);
 
       setMessages((prev) => [...prev, { sender: "bot", text: natural }]);
