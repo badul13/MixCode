@@ -68,7 +68,7 @@ function Chatbot({ query, goHome }) {
   // AI 응답 요청 + 출력 + 저장
   const fetchResponse = async (q) => {
     try {
-      const response = await fetch("https://your-ngrok-id.ngrok.io/chat", {
+      const response = await fetch("https://your-ngrok-id.ngrok.io/news/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: q }),
