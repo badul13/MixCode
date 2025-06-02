@@ -52,12 +52,12 @@ function Chatbot({ query, goHome }) {
   const fetchResponse = async (q) => {
     try {
       const response = await fetch(
-        "https://5ad2-112-166-124-76.ngrok-free.app/news/chat",
+        "https://4dea-210-119-104-214.ngrok-free.app/news/chat",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`, // 여기서 사용자 인증됨
+            // Authorization: `Bearer ${token}`, // 여기서 사용자 인증됨
           },
           body: JSON.stringify({ message: q }),
         }
