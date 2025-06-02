@@ -16,20 +16,8 @@ function Chatbot({ query, goHome, initialMessages = null, updateHistory }) {
   const fetchResponse = useCallback(
     async (q) => {
       try {
-        const response = await fetch(
-          "https://4dea-210-119-104-214.ngrok-free.app/news/chat",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`, // 여기서 사용자 인증됨
-            },
-            body: JSON.stringify({ message: q }),
-          }
-        );
-
-        //      const res = await axiosInstance.post('/chat', { message: q });
-        //      const { title, chat, timestamp } = res.data;
+        const res = await axiosInstance.post("/chat", { message: q });
+        const { title, chat, timestamp } = res.data;
 
         setMessages((prev) => [...prev, ...chat]);
         updateHistory(chat, title, timestamp);
