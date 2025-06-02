@@ -13,26 +13,7 @@ function Chatbot({ query, goHome, initialMessages = null, updateHistory }) {
   const [input, setInput] = useState("");
   const chatEndRef = useRef(null);
 
-<<<<<<< HEAD
-  const fetchResponse = useCallback(
-    async (q) => {
-      try {
-        const res = await axiosInstance.post("/chat", { message: q });
-        const { title, chat, timestamp } = res.data;
 
-        setMessages((prev) => [...prev, ...chat]);
-        updateHistory(chat, title, timestamp);
-      } catch (err) {
-        console.error("❌ 서버 응답 오류:", err);
-        setMessages((prev) => [
-          ...prev,
-          { sender: "bot", text: "⚠️ 서버와 연결할 수 없습니다." },
-        ]);
-      }
-    },
-    [updateHistory]
-  );
-=======
   const fetchResponse = useCallback(async (q) => {
   try {
     const res = await axiosInstance.post('/news/chat', { message: q });
@@ -45,7 +26,7 @@ function Chatbot({ query, goHome, initialMessages = null, updateHistory }) {
     setMessages([{ sender: 'bot', text: '⚠️ 서버와 연결할 수 없습니다.' }]);
   }
 }, [updateHistory]);
->>>>>>> a815631f (api 수정)
+
 
   useLayoutEffect(() => {
     if (initialMessages && initialMessages.length > 0) {
