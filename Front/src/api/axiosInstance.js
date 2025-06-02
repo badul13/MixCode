@@ -10,7 +10,7 @@ axiosInstance.interceptors.request.use(
     const token = localStorage.getItem("accessToken"); // 이 줄이 요청마다 실행되도록 유지
     console.log("요청 전 토큰:", token);
     if (token) {
-      config.headers.Authorization = `Bearer${token.trim()}`; // 공백 제거
+      config.headers.Authorization = token;
     }
     return config;
   },
