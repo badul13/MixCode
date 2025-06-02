@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import './styles/App.css';
 import Sidebar from './components/Sidebar';
 import SearchBox from './components/SearchBox';
 import Chatbot from './components/Chatbot';
 import Login from './components/Login';
 import Signup from './components/Signup';
+import axiosInstance from './api/axiosInstance';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -13,10 +14,49 @@ function App() {
   const [chatMode, setChatMode] = useState(false);
   const [chatQuery, setChatQuery] = useState('');
   const [history, setHistory] = useState([]);
+  const [selectedHistory, setSelectedHistory] = useState(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState('');
 
-  const handleLogin = () => {
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    const email = localStorage.getItem('userEmail');
+    if (token && email) {
+      setIsLoggedIn(true);
+      setCurrentUserEmail(email);
+      fetchHistory(token, email);
+    }
+  }, []);
+
+  const fetchHistory = async (token, email) => {
+    try {
+      const config = {
+        headers: { Authorization: `Bearer ${token}` },
+      };
+      const res = await axiosInstance.get(`/history`, config);
+      setHistory(res.data.data || []);
+    } catch (err) {
+      console.error('❌ 기록 불러오기 실패:', err);
+      setHistory([]);
+    }
+  };
+
+  const handleLogin = async (token, email) => {
+    localStorage.setItem('accessToken', token);
+    localStorage.setItem('userEmail', email);
     setIsLoggedIn(true);
+    setCurrentUserEmail(email);
     setIsLoginPage(false);
+    await fetchHistory(token, email);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('userEmail');
+    setIsLoggedIn(false);
+    setCurrentUserEmail('');
+    setChatMode(false);
+    setSelectedHistory(null);
+    setHistory([]);
   };
 
   const goToLogin = () => {
@@ -35,13 +75,28 @@ function App() {
     setIsLoginPage(false);
     setIsSignupPage(false);
     setChatMode(false);
+    setSelectedHistory(null);
   };
 
   const handleSearch = (query) => {
+    setSelectedHistory(null);
     setChatQuery(query);
-    setHistory([query, ...history]);
     setChatMode(true);
   };
+
+  const handleSelectHistory = (item) => {
+    setSelectedHistory(item);
+    setChatMode(true);
+  };
+
+  const updateCurrentHistory = useCallback((chatMessages, title, timestamp) => {
+    const newItem = {
+      title: title || chatQuery,
+      messages: chatMessages,
+      timestamp: timestamp || new Date().toISOString(),
+    };
+    setHistory((prev) => [newItem, ...prev]);
+  }, [chatQuery]);
 
   if (isLoginPage) {
     return <Login onLogin={handleLogin} goHome={goHome} goSignup={goToSignup} />;
@@ -56,18 +111,25 @@ function App() {
       <div className="header">
         <div className="logo" onClick={goHome}>Fake News Checker</div>
         <div className="login-button-wrapper">
-          {!isLoggedIn && <button onClick={goToLogin}>로그인</button>}
+          {!isLoggedIn ? (
+            <button onClick={goToLogin}>로그인</button>
+          ) : (
+            <button onClick={handleLogout}>로그아웃</button>
+          )}
         </div>
       </div>
 
       <div className="main-content">
+        <Sidebar history={history} onSelect={handleSelectHistory} />
         {chatMode ? (
-          <Chatbot query={chatQuery} goHome={goHome} />
+          <Chatbot
+            query={chatQuery}
+            goHome={goHome}
+            initialMessages={selectedHistory?.messages}
+            updateHistory={updateCurrentHistory}
+          />
         ) : (
-          <>
-            <Sidebar history={history} />
-            <SearchBox onSearch={handleSearch} />
-          </>
+          <SearchBox onSearch={handleSearch} />
         )}
       </div>
     </div>

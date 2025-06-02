@@ -1,56 +1,15 @@
-// Chatbot.js
-import React, { useEffect, useState, useRef } from "react";
-import "../styles/Chatbot.css";
+import React, { useLayoutEffect, useEffect, useState, useRef, useCallback } from 'react';
+import '../styles/Chatbot.css';
+import axiosInstance from '../api/axiosInstance';
 
-const token = localStorage.getItem("accessToken");
-
-// JSON 데이터를 자연어 문장으로 변환하는 함수
-function convertStructuredJsonToNatural(data) {
-  const labelText =
-    data.label === 0
-      ? "🟢 이 뉴스는 **진짜 뉴스**로 판단됩니다."
-      : "🔴 이 뉴스는 **가짜 뉴스**로 판단됩니다.";
-
-  return `📰 뉴스 제목:
-${data.newsTitle}
-
-🧾 뉴스 본문:
-${data.text}
-
-📌 요약:
-${data.summary}
-
-🧠 RAG 응답:
-${data.ragAnswer}
-
-📅 분석 시간: ${data.timestamp}
-
-${labelText}`;
-}
-
-// 챗봇 컴포넌트
-function Chatbot({ query, goHome }) {
+function Chatbot({ query, goHome, initialMessages = null, updateHistory }) {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState('');
   const chatEndRef = useRef(null);
 
-  // 초기 query 입력 시 자동 응답
-  useEffect(() => {
-    if (query) {
-      const userMessage = { sender: "user", text: query };
-      setMessages((prev) => [...prev, userMessage]);
-      fetchResponse(query);
-    }
-  }, [query]);
-
-  // 메시지 추가 시 자동 스크롤
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  // AI 응답 요청 + 출력 + 저장
-  const fetchResponse = async (q) => {
+  const fetchResponse = useCallback(async (q) => {
     try {
+<<<<<<< HEAD
       const response = await fetch(
         "https://4dea-210-119-104-214.ngrok-free.app/news/chat",
         {
@@ -62,36 +21,50 @@ function Chatbot({ query, goHome }) {
           body: JSON.stringify({ message: q }),
         }
       );
+=======
+      const res = await axiosInstance.post('/chat', { message: q });
+      const { title, chat, timestamp } = res.data;
+>>>>>>> 67aa30ce (api호출 추가)
 
-      if (!response.ok) throw new Error("백엔드 응답 오류");
-
-      const responseData = await response.json();
-      const data = responseData.data; // ⚠️ 여기서 .data를 꺼내야 함
-      const natural = convertStructuredJsonToNatural(data);
-
-      setMessages((prev) => [...prev, { sender: "bot", text: natural }]);
-
-      await saveParsedJsonToBackend(data);
-    } catch (error) {
-      console.error("API 호출 오류:", error);
+      setMessages((prev) => [...prev, ...chat]);
+      updateHistory(chat, title, timestamp);
+    } catch (err) {
+      console.error('❌ 서버 응답 오류:', err);
       setMessages((prev) => [
         ...prev,
-        {
-          sender: "bot",
-          text: "⚠️ 서버와 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
-        },
+        { sender: 'bot', text: '⚠️ 서버와 연결할 수 없습니다.' },
       ]);
     }
-  };
+  }, [updateHistory]);
 
-  // 사용자 입력 처리
+  useLayoutEffect(() => {
+    if (initialMessages && initialMessages.length > 0) {
+      setMessages(initialMessages);
+    } else if (query) {
+      const userMessage = { sender: 'user', text: query };
+      setMessages([userMessage]);
+    } else {
+      setMessages([]);
+    }
+  }, [query, initialMessages]);
+
+  useEffect(() => {
+    if (!initialMessages && query) {
+      fetchResponse(query);
+    }
+  }, [query, initialMessages, fetchResponse]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!input.trim()) return;
-    const userMessage = { sender: "user", text: input.trim() };
+    const userMessage = { sender: 'user', text: input.trim() };
     setMessages((prev) => [...prev, userMessage]);
     fetchResponse(input.trim());
-    setInput("");
+    setInput('');
   };
 
   return (

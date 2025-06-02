@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import '../styles/SearchBox.css';
 
-function SearchBox({ onSearch }) {
+const SearchBox = ({ onSearch }) => {
   const [query, setQuery] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (query.trim()) {
-      onSearch(query.trim());
+      onSearch(query);
       setQuery('');
     }
   };
@@ -22,10 +22,9 @@ function SearchBox({ onSearch }) {
           onChange={(e) => setQuery(e.target.value)}
         />
         <button type="submit">↑</button>
-
       </form>
     </div>
   );
-}
+};
 
 export default SearchBox;

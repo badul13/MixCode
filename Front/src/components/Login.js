@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import axiosInstance from '../api/axiosInstance';
 import '../styles/Login.css';
+
 
 function Login({ onLogin, goHome, goSignup }) {
   const [email, setEmail] = useState('');
@@ -14,20 +16,25 @@ function Login({ onLogin, goHome, goSignup }) {
     }
 
     try {
-      const response = await fetch('https://your-api/login', {  // 백엔드 API주소 호출해야함
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      const response = await axiosInstance.post(`/user/signin`, {
+        email,
+        password,
       });
 
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.message || '로그인 실패');
+      const { success, data, message } = response.data;
+
+      if (!success) {
+        throw new Error(message || '로그인 실패');
       }
-      
-      onLogin();  
+
+      // ✅ 토큰 저장
+      localStorage.setItem('accessToken', data.accessToken);
+      localStorage.setItem('refreshToken', data.refreshToken);
+
+      console.log('✅ 로그인 성공');
+      onLogin(); // App 컴포넌트의 로그인 상태 변경
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || err.message || '로그인 실패');
     }
   };
 

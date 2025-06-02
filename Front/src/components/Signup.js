@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axiosInstance from '../api/axiosInstance';
 import '../styles/Signup.css';
 
 const Signup = () => {
@@ -26,25 +27,16 @@ const Signup = () => {
     }
 
     try {
-      // 여기도 백엔드 API랑 연결해야 정상적인 회원가입 가능
-      const response = await fetch('https://your-api/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-        }),
+      const response = await axiosInstance.post('/user/signup', {
+        email: formData.email,
+        password: formData.password,
       });
 
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.message || '회원가입 실패');
-      }
-
+      console.log('✅ 회원가입 성공:', response.data);
       setSuccess('회원가입이 완료되었습니다!');
       setFormData({ email: '', password: '', confirmPassword: '' });
     } catch (err) {
-      setError(err.message);
+      setError(err.response?.data?.message || '회원가입 실패');
     }
   };
 
