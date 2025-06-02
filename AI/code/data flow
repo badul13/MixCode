@@ -1,31 +1,63 @@
-dataset.py
-1. 데이터 준비 및 전처리 (ZIP 해제 → JSON 파싱 → CSV 병합)
-- opendata1.zip, opendata2.zip 압축 해제 → 중첩 ZIP까지 모두 해제
-- JSON 파일에서 newsContent 또는 referSentenceInfo로 본문 추출
-- label=1 (가짜뉴스)로 저장
-- newsdata.csv에서 진짜뉴스(content 추출, label=0)
-- 가짜뉴스 + 진짜뉴스 합쳐서 /content/opendata_output.csv 저장
+1. 데이터 준비 (압축 해제 및 전처리)
+-입력
+Clickbait.zip → 가짜 뉴스
+NonClickbait.zip → 진짜 뉴스
+-과정
+ZIP 파일 안의 중첩 ZIP 파일들을 재귀적으로 압축 해제
+각 ZIP 내 .json 파일에서 뉴스 본문 추출(text 키 사용)
+각 데이터에 label 추가
+Clickbait → label = 1
+NonClickbait → label = 0
+두 데이터프레임 병합 후 무작위 셔플
+최종 데이터를 outputdata.csv로 저장
+-출력
+outputdata.csv
+컬럼: text, label (0: 진짜, 1: 가짜)
 
-model.py
-2. 모델 학습 (CSV 로드 → 데이터셋 생성 → 학습/검증 → 모델 저장)
-- CSV 파일 불러와서 content/label 추출
-- KcELECTRA 토크나이저로 토큰화
-- PyTorch Dataset & Dataloader 구성
-- 이진 분류 모델 훈련 (3 Epoch, AdamW)
-- 학습 후 /content/news_classifier.pt에 저장
+2. 모델 학습 (beomi/KcELECTRA-base 기반)
+-입력
+outputdata.csv
+-과정
+CSV 불러오기 후 train_test_split (80:20)
+Hugging Face beomi/KcELECTRA-base 로드
+NewsDataset 클래스로 커스텀 데이터셋 구성
+DataLoader로 배치 구성
+학습 루프 (train_epoch, evaluate)
+CrossEntropyLoss, AdamW 사용
+에폭마다 정확도 출력
+-출력(별도 학습)
+KcELECTRA 기반 가짜 뉴스 분류기 모델 → news_classifier_model.pt
+요약 기반 KoBERT 분류기 모델 (RAG용) → rag_classifier_model.pt
 
-crawler.py
-서비스 API 및 CLI (Flask 서버 → 뉴스 크롤링 → RAG 응답 생성 → 진위 판별)
-요약 모델: KoBART (digit82/kobart-summarization)
-진위 판단 모델: 학습한 KoBERT 기반 분류기
-벡터 기반 RAG 검색: TF-IDF로 관련 기사 3개 검색
-뉴스 요약 + RAG 기반 질문 응답
+3. 모델 기반 예측 서버 (Flask API + CLI)
+-입력
+Flask /verify에 입력되는 뉴스 본문 (POST JSON { "text": ... })
+-과정
+KoBERTClassifier 로드
+입력 뉴스 → 토크나이징 (BERTTokenizer)
+모델 추론 → logits → softmax → 확률값
+확률 기준으로 레이블 분류
+fake_prob > 0.5 → 가짜 뉴스 (label = 1)
+-출력
+JSON 응답:
+{
+  "real_prob": 0.31,
+  "fake_prob": 0.69,
+  "label": 1
+}
 
-<판별방식>
-- STEP1: KoBERT 확률 (real vs fake)
-- STEP2: 관련 문서 수 기반 RAG 신뢰도
-- 최종 판단:
-진짜일 가능성 높음 (둘 다 높을 때)
-가짜일 가능성 높음 (fake 확률 높을 때)
-관련 문서 없으면 판단 유보
-불확실하면 재검토 권장
+4. CLI 챗봇 + RAG Lite 구조 (KoBERT + 요약 + 유사 뉴스 검색)
+-입력
+사용자 입력 뉴스 문장
+-과정
+1차 판별: KoBERTClassifier로 진위 판별
+키워드 추출 
+크롤러로 관련 뉴스 검색
+검색된 뉴스로부터 요약 생성 
+TF-IDF 기반 유사도 비교 → RAG 기반 문서 선택
+선택된 요약 문서 기반 추가 판별 (2차 판단)
+1차 + 2차 판단 결과를 결합하여 최종 진위 판단
+-출력
+최종 진위 결과 및 신뢰도
+요약 문장, 유사 기사 정보 등도 함께 표시
+리턴값: 카톡사진 
