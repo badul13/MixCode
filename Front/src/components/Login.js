@@ -1,17 +1,18 @@
-import React, { useState } from 'react';
-import axiosInstance from '../api/axiosInstance';
-import '../styles/Login.css';
-
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import axiosInstance from "../api/axiosInstance";
+import "../styles/Login.css";
 
 function Login({ onLogin, goHome, goSignup }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
   const handleLogin = async () => {
-    setError('');
+    setError("");
     if (!email || !password) {
-      setError('아이디와 비밀번호를 입력하세요.');
+      setError("아이디와 비밀번호를 입력하세요.");
       return;
     }
 
@@ -21,20 +22,36 @@ function Login({ onLogin, goHome, goSignup }) {
         password,
       });
 
-      const { success, data, message } = response.data;
+      const { success, data } = response.data;
 
-      if (!success) {
-        throw new Error(message || '로그인 실패');
+      if (success && data) {
+        const { accessToken, refreshToken } = data;
+
+        // ✅ 콘솔에서 확인
+        console.log("✅ accessToken:", accessToken);
+        console.log("✅ refreshToken:", refreshToken);
+
+        // ✅ localStorage에 저장
+        localStorage.setItem("accessToken", accessToken);
+        localStorage.setItem("refreshToken", refreshToken);
+        localStorage.setItem("userEmail", email);
+
+        // ✅ 저장 확인 로그
+        console.log(
+          "🧪 저장된 accessToken:",
+          localStorage.getItem("accessToken")
+        );
+
+        // ✅ 약간의 지연 후 페이지 이동
+        setTimeout(() => {
+          navigate("/chatbot");
+        }, 200);
+      } else {
+        alert("❌ 로그인 실패: 서버 응답 이상");
       }
-
-      // ✅ 토큰 저장
-      localStorage.setItem('accessToken', data.accessToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-
-      console.log('✅ 로그인 성공');
-      onLogin(); // App 컴포넌트의 로그인 상태 변경
-    } catch (err) {
-      setError(err.response?.data?.message || err.message || '로그인 실패');
+    } catch (error) {
+      console.error("로그인 에러:", error);
+      alert("❌ 로그인 중 오류 발생");
     }
   };
 
@@ -59,7 +76,9 @@ function Login({ onLogin, goHome, goSignup }) {
       </div>
       {error && <p className="error">{error}</p>}
       <div className="Signup-link">
-        <p>계정이 없으신가요? <button onClick={goSignup}>회원가입</button></p>
+        <p>
+          계정이 없으신가요? <button onClick={goSignup}>회원가입</button>
+        </p>
       </div>
     </div>
   );
