@@ -1,136 +1,193 @@
 import os
 import torch
 import threading
+import pandas as pd
 from flask import Flask, request, jsonify
-from flask_ngrok import run_with_ngrok
 from typing import List
 from dotenv import load_dotenv
+from transformers import PreTrainedTokenizerFast
+from transformers import BertTokenizer
+from transformers import BertForSequenceClassification
 from transformers import PreTrainedTokenizerFast, BartForConditionalGeneration
 from naver_news_crawler import NaverNewsCrawler
-from kobert_classifier import predict_prob
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from transformers import AutoTokenizer
+from pyngrok import ngrok
+from flask_cors import CORS
+from rag_engine import RAGEngine
 
-os.environ["NAVER_CLIENT_ID"] = "9wkHoQIN4RQakh958RQv"
-os.environ["NAVER_CLIENT_SECRET"] = "xs9W_ozJ1g"
+# RAG 엔진 인스턴스 생성
+vector_store = RAGEngine()
+
+# 데이터 로드 및 인덱스 빌드 (초기)
+df = pd.read_csv('outputdata.csv')
+docs = df['text'].dropna().tolist()
+vector_store.build_index(docs)
+
 load_dotenv()
 
+ngrok.set_auth_token("2xwNdP6n13UgVoHisO4aafDb8kq_2J1uW4qGbkwE3CbDztGKn")
+
 app = Flask(__name__)
-run_with_ngrok(app)
+CORS(app)
+
 crawler = NaverNewsCrawler()
 
-tokenizer = PreTrainedTokenizerFast.from_pretrained("digit82/kobart-summarization")
-bart_model = BartForConditionalGeneration.from_pretrained("digit82/kobart-summarization")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-bart_model.to(device)
-bart_model.eval()
 
-# 벡터 저장소
-class VectorStore:
-    def __init__(self):
-        self.vectorizer = TfidfVectorizer(stop_words='english')
-        self.doc_vectors = None
-        self.documents = []
+# 요약 모델 로드 (KoBART)
+tokenizer_kobart = PreTrainedTokenizerFast.from_pretrained("digit82/kobart-summarization")
+model_kobart = BartForConditionalGeneration.from_pretrained("digit82/kobart-summarization")
+model_kobart.to(device)
+model_kobart.eval()
 
-    def build_index(self, docs: List[str]):
-        self.documents = docs
-        self.doc_vectors = self.vectorizer.fit_transform(docs) if docs else None
+# 1단계 KcELECTRA 기반 가짜 뉴스 분류기
+class KcElectraClassifier:
+    def __init__(self, model_path="news_classifier_model.pt"):
+        self.device = device
+        self.tokenizer = AutoTokenizer.from_pretrained("monologg/kobert")
+        self.model = BertForSequenceClassification.from_pretrained("monologg/kobert", num_labels=2)
+        self.model.to(self.device)
+        self.model.eval()
 
-    def search(self, query: str, top_k=3) -> List[str]:
-        if self.doc_vectors is None or not self.documents:
-             return []
-        query_vec = self.vectorizer.transform([query])
-        similarities = cosine_similarity(query_vec, self.doc_vectors).flatten()
-        top_indices = similarities.argsort()[-top_k:][::-1]
+    def predict_prob(self, text):
+        inputs = self.tokenizer(text, return_tensors="pt", max_length=512, truncation=True, padding=True)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            probs = torch.softmax(outputs.logits, dim=-1).cpu().numpy()[0]
+        # (진짜:1, 가짜:0)
+        return probs[1], probs[0]
 
-        return [self.documents[i] for i in top_indices if similarities[i] > 0]
+# 2단계 요약 기반 KoBERT 분류기 (RAG용)
+class RagKoBertClassifier:
+    def __init__(self, model_path="rag_classifier_model.pt"):
+        self.device = device
+        self.tokenizer = BertTokenizer.from_pretrained("monologg/kobert")
+        self.model = BertForSequenceClassification.from_pretrained("monologg/kobert", num_labels=2)
+        self.model.to(self.device)
+        self.model.eval()
 
+    def predict_rag_prob(self, text, summary_concat):
+        input_text = text + " [SEP] " + summary_concat
+        inputs = self.tokenizer(input_text, return_tensors="pt", max_length=512, truncation=True, padding=True)
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            probs = torch.softmax(outputs.logits, dim=-1).cpu().numpy()[0]
+        label = int(probs.argmax())
+        return probs[1], probs[0], label
 
-vector_store = VectorStore()
-
+# 요약 함수
 def summarize_docs_korean(docs: List[str], max_docs: int = 3) -> List[str]:
     summaries = []
     for doc in docs[:max_docs]:
         try:
-            input_ids = tokenizer.encode(doc[:1024], return_tensors="pt", max_length=1024, truncation=True).to(device)
-            summary_ids = bart_model.generate(
-                input_ids, max_length=128, min_length=32,
-                length_penalty=2.0, num_beams=4, early_stopping=True
+            input_ids = tokenizer_kobart.encode(doc[:1024], return_tensors="pt", max_length=1024, truncation=True).to(device)
+            summary_ids = model_kobart.generate(
+                input_ids,
+                max_length=128,
+                min_length=64,
+                length_penalty=2.0,
+                num_beams=4,
+                early_stopping=True,
             )
-            summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+            summary = tokenizer_kobart.decode(summary_ids[0], skip_special_tokens=True)
             summaries.append(summary)
         except Exception as e:
             summaries.append(f"요약 실패: {e}")
     return summaries
 
-# RAG 응답 
-def generate_answer(question: str, contexts: List[str]) -> str:
-    context_text = " ".join(contexts)
-    input_text = f"{context_text} 질문: {question}"
-    input_ids = tokenizer.encode(input_text, return_tensors='pt', max_length=512, truncation=True).to(device)
-    summary_ids = bart_model.generate(input_ids, max_length=128, num_beams=4, early_stopping=True)
-    return tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+def clean_summary(text: str) -> str:
+    awkward_starts = ["했다.", "이다.", "요?"]
+    text = text.strip()
+    for aw in awkward_starts:
+        if text.startswith(aw):
+            text = text[len(aw):].strip()
+    if text and not text.endswith('.'):
+        text += '.'
+    return text
 
-# 신뢰도 분리
-def final_decision(real_prob, fake_prob, top_docs, answer):
-    step1_confidence = max(real_prob, fake_prob)
-    step2_confidence = min(len(top_docs) / 3, 1.0) if top_docs else 0.0
+# 1단계, 2단계 확률 합치는 함수 (가중치 적용 예시)
+def combined_prob(real1, fake1, real2, fake2, weight=0.5):
+    combined_real = real1 * (1 - weight) + real2 * weight
+    combined_fake = fake1 * (1 - weight) + fake2 * weight
+    s = combined_real + combined_fake
+    if s == 0:
+        return 0.0, 0.0
+    return combined_real / s, combined_fake / s
 
-    if step1_confidence > 0.8 and step2_confidence > 0.6:
-        decision = "🟢 진짜일 가능성이 높습니다."
-    elif fake_prob > 0.8:
-        decision = "🔴 가짜일 가능성이 높습니다."
-    elif not top_docs:
-        decision = "⚪ 관련 뉴스가 없어 진위를 판단하기 어렵습니다."
-    else:
-        decision = "🟡 확신할 수 없습니다. 추가 검토가 필요합니다."
+# 모델 초기화 (체크포인트 경로 포함)
+kc_electra_model = KcElectraClassifier("news_classifier_model.pt")
+rag_kobert_model = RagKoBertClassifier("rag_classifier_model.pt")
 
-    return decision, round(step1_confidence, 3), round(step2_confidence, 3)
+def generate_answer(query: str, docs: List[str]):
+    answer = " ".join(docs[:3])
+    confidence = 0.9  # 필요시 수정
+    return answer, confidence
 
-# Flask API 
 @app.route("/verify", methods=["POST"])
 def verify_news():
     try:
         data = request.get_json()
-        text = data.get("text", "").strip()
-        if not text:
-            return jsonify({"error": "텍스트가 비어 있습니다."}), 400
+        text = data["text"]
 
-        probs = predict_prob(text)
-        real_prob, fake_prob = probs[0], probs[1]
+        # 1단계 예측
+        real_prob_1, fake_prob_1 = kc_electra_model.predict_prob(text)
 
         keywords = crawler.extract_keywords(text)
         urls = crawler.search_news_urls(keywords)
         docs = crawler.crawl_articles(urls)
 
+        if not docs:
+            return jsonify({
+                "error": "관련 뉴스 기사 없음",
+                "real_1": round(real_prob_1, 3),
+                "fake_1": round(fake_prob_1, 3),
+                "keywords": keywords,
+                "urls": urls,
+                "ragAnswer": "",
+                "confidence": 0.0,
+                "summaries": []
+            }), 200
+
+        # 인덱스 재구축
         vector_store.build_index(docs)
         top_docs = vector_store.search(text, top_k=3)
-        summaries = summarize_docs_korean(top_docs)
-        answer = generate_answer(text, top_docs) if top_docs else ""
 
-        decision, step1_conf, step2_conf = final_decision(real_prob, fake_prob, top_docs, answer)
+        answer, rag_confidence = generate_answer(text, top_docs)
+        summaries = summarize_docs_korean(top_docs)
+        summary_concat = " ".join(summaries)
+
+        # 2단계 RAG 분류기 예측
+        rag_real_prob, rag_fake_prob, rag_label = rag_kobert_model.predict_rag_prob(text, summary_concat)
+
+        combined_real, combined_fake = combined_prob(
+            real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob, weight=0.5
+        )
 
         return jsonify({
-            "error": None,
-            "real": round(real_prob, 3),
-            "fake": round(fake_prob, 3),
-            "step1_confidence": step1_conf,
-            "step2_confidence": step2_conf,
-            "confidence": max(step1_conf, step2_conf),
+            "real_1": float(round(real_prob_1, 3)),
+            "fake_1": float(round(fake_prob_1, 3)),
+            "rag_real": float(round(rag_real_prob, 3)),
+            "rag_fake": float(round(rag_fake_prob, 3)),
+            "combined_real": float(round(combined_real, 3)),
+            "combined_fake": float(round(combined_fake, 3)),
+            "rag_confidence": float(round(rag_confidence, 3)),
+            "label": int(rag_label),
             "keywords": keywords,
             "urls": urls,
-            "summaries": summaries,
             "ragAnswer": answer,
-            "finalDecision": decision
+            "confidence": float(round(rag_confidence, 3)),
+            "summaries": summaries
         }), 200
+
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def wrap_text_by_sentences(text: str) -> str:
-    import re
-    sentences = re.split(r'(?<=[.!?]) +', text)
-    return "\n".join(sentences)
+@app.route("/ngrok_url")
+def get_ngrok_url():
+    return jsonify({"ngrok_url": public_url})
 
 def wrap_text_by_length(text: str, max_len=80) -> str:
     lines = []
@@ -150,81 +207,81 @@ def format_summaries(summaries: List[str]) -> str:
         formatted.append(f"{i}. \n{wrapped}")
     return "\n\n".join(formatted)
 
-# CLI 
-def cli_loop():
+def final_decision(real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob, threshold=0.5):
+    combined_real, combined_fake = combined_prob(real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob)
+    if combined_real >= threshold:
+        return 1, combined_real
+    else:
+        return 0, combined_fake
 
-    print("뉴스 검색 챗봇 시작합니다. 종료하려면 'exit' 입력하세요.\n")
+def cli_loop():
+    print("뉴스 진위 예측 + RAG 기반 뉴스 검색 챗봇 시작. 종료하려면 'exit' 입력\n")
     while True:
-        text = input(f"\033[33m문장을 입력해주세요: \033[0m").strip()
+        text = input("문장을 입력하세요: ")
         if text.lower() == "exit":
             print("챗봇을 종료합니다.")
             break
-        if not text:
-            print("⚠️ 빈 입력입니다. 다시 시도하세요.\n")
-            continue
-
         try:
-            probs = predict_prob(text)
-            if len(probs) < 2:
-                print("⚠️ 모델 출력 오류\n")
-                continue
-            real_prob, fake_prob = probs[0], probs[1]
-
+            real_prob_1, fake_prob_1 = kc_electra_model.predict_prob(text)
             keywords = crawler.extract_keywords(text)
             urls = crawler.search_news_urls(keywords)
-
-            print("🔑 핵심 키워드:", ", ".join(keywords))
-            print("🔗 관련 기사 URL 목록:")
-            if urls:
-                for url in urls:
-                    print(f"  - {url}")
-            else:
-                print("  없음")
-
             docs = crawler.crawl_articles(urls)
+
             if not docs:
-                print("\n💡 RAG 응답:")
-                print("정부의 발표와 관련된 뉴스는 확인되지 않았습니다.")
+                print("⚠️ 관련 뉴스 없음\n")
                 continue
 
             vector_store.build_index(docs)
             top_docs = vector_store.search(text, top_k=3)
-            if not top_docs:
-                print("\n💡 RAG 응답:")
-                print("관련 뉴스가 충분하지 않습니다.")
-                continue
 
-            answer = generate_answer(text, top_docs)
+            answer, rag_confidence = generate_answer(text, top_docs)
             summaries = summarize_docs_korean(top_docs)
+            summary_concat = " ".join(summaries)
 
-            # RAG 기반 신뢰도 (예시로 고정값 사용)
-            rag_confidence = len(top_docs) / 4
+            rag_real_prob, rag_fake_prob, rag_label = rag_kobert_model.predict_rag_prob(text, summary_concat)
 
-            print("\n💡 RAG 응답:")
-            print(format_summaries(summaries))
-            
-            print("\n📝 요약:")
-            for i, s in enumerate(summaries, 1):
-                print(f"{i}. {wrap_text_by_length(s)}")
+            combined_real, combined_fake = combined_prob(
+                real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob, weight=0.5
+            )
 
-            print("\n" + "─" * 70)
+            print("🔑 핵심 키워드:", ", ".join(keywords))
+            print("🔗 관련 기사 URL 목록:", urls)
+            print(f"\n💡 RAG 응답:\n{answer}")
+            print(f"🔍 신뢰도: {rag_confidence:.3f}")
+            print("📝 요약:\n")
+            for i, summary in enumerate(summaries, 1):
+                s_clean = clean_summary(summary)
+                if s_clean:
+                    print(f"{i}. {s_clean}\n")
 
-            print(f"\n🔍 1단계 신뢰도 (모델 기반): {real_prob:.3f}")
-            print(f"🔎 2단계 신뢰도 (RAG 기반): {rag_confidence:.3f}")
+            print("📊 신뢰도 분석 결과:")
+            print(f"- KoBERT 분류 결과: {'가짜뉴스' if fake_prob_1 >= 0.5 else '진짜뉴스'} ({fake_prob_1:.3f} 확률)")
+            print(f"- RAG 기반 분류 결과: {'가짜뉴스' if rag_fake_prob >= 0.5 else '진짜뉴스'} ({rag_confidence:.3f} 확률)\n")
 
-            print(f"\n✅ 진짜뉴스 확률: {real_prob * 100:.2f}%")
-            print(f"❌ 가짜뉴스 확률: {fake_prob * 100:.2f}%")
+            print(f"\n🧾 진짜뉴스 확률: {combined_real * 100:.2f}%")
+            print(f"🧾 가짜뉴스 확률: {combined_fake * 100:.2f}%")
 
-            final_score = real_prob * 0.5 + rag_confidence * 0.5
-            final_label = "✅ 진짜일 가능성이 높은 기사입니다!" if final_score >= 0.5 else "❌ 가짜일 가능성이 높은 기사입니다!"
+            final_label, final_confidence = final_decision(real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob)
+            if final_label == 1:
+                print("\n 최종 판단: 진짜일 가능성이 높은 기사입니다!")
+            else:
+                print("\n 최종 판단: 가짜일 가능성이 높은 기사입니다!")
 
-            print(f"\n📌 최종 판단: {final_label}\n")
-            print("─" * 70 + "\n")
+            print("\n" + "=" * 50 + "\n")
 
         except Exception as e:
-            print(f"⚠️ 오류 발생: {e}\n")
+            print(f"❗ 오류 발생: {e}")
 
-# 실행
+def run_flask():
+    app.run(host="0.0.0.0", port=8070)
+
 if __name__ == "__main__":
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=8000, debug=False, use_reloader=False)).start()
+    port = 8070
+    public_url = ngrok.connect(port).public_url
+    print(f" * ngrok tunnel URL: {public_url}")
+
+    # Flask 서버 별도 스레드로 실행
+    threading.Thread(target=run_flask).start()
+
+    # CLI 실행
     cli_loop()
