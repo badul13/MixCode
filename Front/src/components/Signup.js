@@ -2,13 +2,12 @@ import React, { useState } from 'react';
 import axiosInstance from '../api/axiosInstance';
 import '../styles/Signup.css';
 
-const Signup = () => {
+function Signup({ goHome }) {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     confirmPassword: '',
   });
-
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
@@ -27,14 +26,18 @@ const Signup = () => {
     }
 
     try {
-      const response = await axiosInstance.post('/user/signup', {
+      await axiosInstance.post('/user/signup', {
         email: formData.email,
         password: formData.password,
       });
 
-      console.log('✅ 회원가입 성공:', response.data);
       setSuccess('회원가입이 완료되었습니다!');
       setFormData({ email: '', password: '', confirmPassword: '' });
+
+      // 1초 후 홈으로 이동
+      setTimeout(() => {
+        goHome();
+      }, 1000);
     } catch (err) {
       setError(err.response?.data?.message || '회원가입 실패');
     }
@@ -74,6 +77,6 @@ const Signup = () => {
       {success && <p className="success">{success}</p>}
     </div>
   );
-};
+}
 
 export default Signup;

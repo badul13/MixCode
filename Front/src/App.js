@@ -16,6 +16,8 @@ function App() {
   const [history, setHistory] = useState([]);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [currentUserEmail, setCurrentUserEmail] = useState('');
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
@@ -23,21 +25,32 @@ function App() {
     if (token && email) {
       setIsLoggedIn(true);
       setCurrentUserEmail(email);
-      fetchHistory(token, email);
+      fetchHistory(token, 1);
     }
   }, []);
 
-  const fetchHistory = async (token, email) => {
+  const fetchHistory = async (token, pageNum = 1) => {
     try {
       const config = {
         headers: { Authorization: `Bearer ${token}` },
+        params: { page: pageNum, limit: 10 }
       };
       const res = await axiosInstance.get(`/history`, config);
-      setHistory(res.data.data || []);
+      const newData = res.data.data || [];
+      setHistory(prev => pageNum === 1 ? newData : [...prev, ...newData]);
+      setHasMore(newData.length === 10);
     } catch (err) {
       console.error('❌ 기록 불러오기 실패:', err);
-      setHistory([]);
+      setHasMore(false);
     }
+  };
+
+  const loadMoreHistory = () => {
+    if (!hasMore) return;
+    const token = localStorage.getItem('accessToken');
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchHistory(token, nextPage);
   };
 
   const handleLogin = async (token, email) => {
@@ -46,7 +59,8 @@ function App() {
     setIsLoggedIn(true);
     setCurrentUserEmail(email);
     setIsLoginPage(false);
-    await fetchHistory(token, email);
+    setPage(1);
+    await fetchHistory(token, 1);
   };
 
   const handleLogout = () => {
@@ -57,6 +71,8 @@ function App() {
     setChatMode(false);
     setSelectedHistory(null);
     setHistory([]);
+    setPage(1);
+    setHasMore(true);
   };
 
   const goToLogin = () => {
@@ -120,7 +136,7 @@ function App() {
       </div>
 
       <div className="main-content">
-        <Sidebar history={history} onSelect={handleSelectHistory} />
+        <Sidebar history={history} onSelect={handleSelectHistory} onLoadMore={loadMoreHistory} />
         {chatMode ? (
           <Chatbot
             query={chatQuery}
