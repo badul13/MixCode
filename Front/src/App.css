@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  font-family: 'Arial', sans-serif;
+  font-family: "Arial", sans-serif;
 }
 
 .header {
@@ -45,4 +45,8 @@
 .page-content {
   width: 100%;
   max-width: 800px;
+}
+
+.bubble {
+  white-space: pre-line;
 }

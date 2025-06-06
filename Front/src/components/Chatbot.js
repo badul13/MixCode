@@ -98,7 +98,7 @@ function Chatbot({ query, goHome }) {
         <button onClick={goHome}>← 홈으로</button>
         <h2>챗봇 응답</h2>
       </div>
-      <div className="chatbot-messages">
+      <div className="chatbot-messages" style={{ whiteSpace: "pre-line" }}>
         {messages.map((msg, index) => (
           <div key={index} className={`message ${msg.sender}`}>
             <div className="bubble">{msg.text}</div>
