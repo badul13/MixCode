@@ -25,7 +25,7 @@ function Sidebar({ history, onSelect, onLoadMore }) {
         {history.map((item, index) => (
           <li key={index} onClick={() => onSelect(item)}>
             {item.title || item.query}
-          </li>
+            </li>
         ))}
       </ul>
     </div>
