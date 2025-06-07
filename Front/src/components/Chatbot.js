@@ -1,29 +1,38 @@
-import React, { useLayoutEffect, useEffect, useState, useRef, useCallback } from 'react';
-import '../styles/Chatbot.css';
-import axiosInstance from '../api/axiosInstance';
+import React, {
+  useLayoutEffect,
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+} from "react";
+import "../styles/Chatbot.css";
+import axiosInstance from "../api/axiosInstance";
 
 function Chatbot({ query, goHome, initialMessages = null, updateHistory }) {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState("");
   const chatEndRef = useRef(null);
 
-  const fetchResponse = useCallback(async (q) => {
-    try {
-      const res = await axiosInstance.post('/news/chat', { text: q });
-      const { title, chat, timestamp } = res.data;
-      setMessages([{ sender: 'user', text: q }, ...chat]);
-      updateHistory(chat, title, timestamp);
-    } catch (err) {
-      console.error('❌ 서버 응답 오류:', err);
-      setMessages([{ sender: 'bot', text: '⚠️ 서버와 연결할 수 없습니다.' }]);
-    }
-  }, [updateHistory]);
+  const fetchResponse = useCallback(
+    async (q) => {
+      try {
+        const res = await axiosInstance.post("/news/chat", { text: q });
+        const { title, chat, timestamp } = res.data;
+        setMessages([{ sender: "user", text: q }, ...chat]);
+        updateHistory(chat, title, timestamp);
+      } catch (err) {
+        console.error("❌ 서버 응답 오류:", err);
+        setMessages([{ sender: "bot", text: "⚠️ 서버와 연결할 수 없습니다." }]);
+      }
+    },
+    [updateHistory]
+  );
 
   useLayoutEffect(() => {
     if (initialMessages && initialMessages.length > 0) {
       setMessages(initialMessages);
     } else if (query) {
-      const userMessage = { sender: 'user', text: query };
+      const userMessage = { sender: "user", text: query };
       setMessages([userMessage]);
     } else {
       setMessages([]);
@@ -37,54 +46,16 @@ function Chatbot({ query, goHome, initialMessages = null, updateHistory }) {
   }, [query, initialMessages, fetchResponse]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-<<<<<<< HEAD
-  // AI 응답 요청 + 출력 + 저장
-  const fetchResponse = async (q) => {
-    try {
-      const response = await fetch(
-        "https://76c9-175-115-149-2.ngrok-free.app/news/chat",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: token,
-          },
-          body: JSON.stringify({ text: q }),
-        }
-      );
-
-      if (!response.ok) throw new Error("백엔드 응답 오류");
-
-      const responseData = await response.json();
-      const data = responseData.data; // ⚠️ 여기서 .data를 꺼내야 함
-      const natural = convertStructuredJsonToNatural(data);
-
-      setMessages((prev) => [...prev, { sender: "bot", text: natural }]);
-    } catch (error) {
-      console.error("API 호출 오류:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          sender: "bot",
-          text: "⚠️ 서버와 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.",
-        },
-      ]);
-    }
-  };
-
-  // 사용자 입력 처리
-=======
->>>>>>> 31b39005 (기록 열람 추가..)
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!input.trim()) return;
-    const userMessage = { sender: 'user', text: input.trim() };
+    const userMessage = { sender: "user", text: input.trim() };
     setMessages((prev) => [...prev, userMessage]);
     fetchResponse(input.trim());
-    setInput('');
+    setInput("");
   };
 
   return (

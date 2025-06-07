@@ -16,7 +16,7 @@ function App() {
   const [history, setHistory] = useState([]);
   const [selectedHistory, setSelectedHistory] = useState(null);
   const [currentUserEmail, setCurrentUserEmail] = useState("");
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
@@ -29,16 +29,19 @@ function App() {
     }
   }, []);
 
-  const fetchHistory = async (token, pageNum = 1) => {
+  const fetchHistory = async (token, pageNum = 0) => {
     try {
       const config = {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: token },
         params: { page: pageNum, limit: 10 },
       };
-      const res = await axiosInstance.get(`/history`, config);
-      const newData = res.data.data || [];
-      setHistory((prev) => (pageNum === 1 ? newData : [...prev, ...newData]));
-      setHasMore(newData.length === 10);
+      const res = await axiosInstance.get(`/news/history`, config);
+
+      const newData = res.data.data.verifications || [];
+      const hasNext = res.data.data.pageInfo?.hasNext;
+
+      setHistory((prev) => (pageNum === 0 ? newData : [prev, newData]));
+      setHasMore(hasNext);
     } catch (err) {
       console.error("❌ 기록 불러오기 실패:", err);
       setHasMore(false);
@@ -54,11 +57,7 @@ function App() {
   };
 
   const handleLogin = async (token, email) => {
-<<<<<<< HEAD
-    setIsLoginPage(false); // 🟢 먼저 false로 설정하여 렌더링 유도
-=======
     setIsLoginPage(false);
->>>>>>> 31b39005 (기록 열람 추가..)
     localStorage.setItem("accessToken", token);
     localStorage.setItem("userEmail", email);
     setIsLoggedIn(true);
@@ -108,7 +107,7 @@ function App() {
     try {
       const token = localStorage.getItem("accessToken");
       const res = await axiosInstance.get(`/news/historyContent/${item.id}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: token },
       });
       setSelectedHistory(res.data.data);
       setChatMode(true);
@@ -164,7 +163,11 @@ function App() {
           <Chatbot
             query={chatQuery}
             goHome={goHome}
-            initialMessages={selectedHistory?.messages || [{ sender: 'bot', text: selectedHistory?.summary }]}
+            initialMessages={
+              selectedHistory?.messages || [
+                { sender: "bot", text: selectedHistory?.summary },
+              ]
+            }
             updateHistory={updateCurrentHistory}
           />
         ) : (
