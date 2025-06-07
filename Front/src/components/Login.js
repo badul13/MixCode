@@ -36,6 +36,8 @@ function Login({ onLogin, goHome, goSignup }) {
         localStorage.setItem("refreshToken", refreshToken);
         localStorage.setItem("userEmail", email);
 
+        window.location.href = "/chatbot";
+
         // ✅ 저장 확인 로그
         console.log(
           "🧪 저장된 accessToken:",

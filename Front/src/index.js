@@ -9,8 +9,4 @@ root.render(
   <BrowserRouter>
     <App />
   </BrowserRouter>
-<<<<<<< HEAD
 );
-=======
-);
->>>>>>> 201783ee (페이지네이션 구현)

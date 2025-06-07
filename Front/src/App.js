@@ -1,27 +1,27 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import './styles/App.css';
-import Sidebar from './components/Sidebar';
-import SearchBox from './components/SearchBox';
-import Chatbot from './components/Chatbot';
-import Login from './components/Login';
-import Signup from './components/Signup';
-import axiosInstance from './api/axiosInstance';
+import React, { useState, useCallback, useEffect } from "react";
+import "./styles/App.css";
+import Sidebar from "./components/Sidebar";
+import SearchBox from "./components/SearchBox";
+import Chatbot from "./components/Chatbot";
+import Login from "./components/Login";
+import Signup from "./components/Signup";
+import axiosInstance from "./api/axiosInstance";
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isLoginPage, setIsLoginPage] = useState(false);
   const [isSignupPage, setIsSignupPage] = useState(false);
   const [chatMode, setChatMode] = useState(false);
-  const [chatQuery, setChatQuery] = useState('');
+  const [chatQuery, setChatQuery] = useState("");
   const [history, setHistory] = useState([]);
   const [selectedHistory, setSelectedHistory] = useState(null);
-  const [currentUserEmail, setCurrentUserEmail] = useState('');
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    const email = localStorage.getItem('userEmail');
+    const token = localStorage.getItem("accessToken");
+    const email = localStorage.getItem("userEmail");
     if (token && email) {
       setIsLoggedIn(true);
       setCurrentUserEmail(email);
@@ -33,41 +33,41 @@ function App() {
     try {
       const config = {
         headers: { Authorization: `Bearer ${token}` },
-        params: { page: pageNum, limit: 10 }
+        params: { page: pageNum, limit: 10 },
       };
       const res = await axiosInstance.get(`/history`, config);
       const newData = res.data.data || [];
-      setHistory(prev => pageNum === 1 ? newData : [...prev, ...newData]);
+      setHistory((prev) => (pageNum === 1 ? newData : [...prev, ...newData]));
       setHasMore(newData.length === 10);
     } catch (err) {
-      console.error('❌ 기록 불러오기 실패:', err);
+      console.error("❌ 기록 불러오기 실패:", err);
       setHasMore(false);
     }
   };
 
   const loadMoreHistory = () => {
     if (!hasMore) return;
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem("accessToken");
     const nextPage = page + 1;
     setPage(nextPage);
     fetchHistory(token, nextPage);
   };
 
   const handleLogin = async (token, email) => {
-    localStorage.setItem('accessToken', token);
-    localStorage.setItem('userEmail', email);
+    setIsLoginPage(false); // 🟢 먼저 false로 설정하여 렌더링 유도
+    localStorage.setItem("accessToken", token);
+    localStorage.setItem("userEmail", email);
     setIsLoggedIn(true);
     setCurrentUserEmail(email);
-    setIsLoginPage(false);
     setPage(1);
     await fetchHistory(token, 1);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('userEmail');
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("userEmail");
     setIsLoggedIn(false);
-    setCurrentUserEmail('');
+    setCurrentUserEmail("");
     setChatMode(false);
     setSelectedHistory(null);
     setHistory([]);
@@ -105,17 +105,22 @@ function App() {
     setChatMode(true);
   };
 
-  const updateCurrentHistory = useCallback((chatMessages, title, timestamp) => {
-    const newItem = {
-      title: title || chatQuery,
-      messages: chatMessages,
-      timestamp: timestamp || new Date().toISOString(),
-    };
-    setHistory((prev) => [newItem, ...prev]);
-  }, [chatQuery]);
+  const updateCurrentHistory = useCallback(
+    (chatMessages, title, timestamp) => {
+      const newItem = {
+        title: title || chatQuery,
+        messages: chatMessages,
+        timestamp: timestamp || new Date().toISOString(),
+      };
+      setHistory((prev) => [newItem, ...prev]);
+    },
+    [chatQuery]
+  );
 
   if (isLoginPage) {
-    return <Login onLogin={handleLogin} goHome={goHome} goSignup={goToSignup} />;
+    return (
+      <Login onLogin={handleLogin} goHome={goHome} goSignup={goToSignup} />
+    );
   }
 
   if (isSignupPage) {
@@ -125,7 +130,9 @@ function App() {
   return (
     <div className="app-container">
       <div className="header">
-        <div className="logo" onClick={goHome}>Fake News Checker</div>
+        <div className="logo" onClick={goHome}>
+          Fake News Checker
+        </div>
         <div className="login-button-wrapper">
           {!isLoggedIn ? (
             <button onClick={goToLogin}>로그인</button>
@@ -136,7 +143,11 @@ function App() {
       </div>
 
       <div className="main-content">
-        <Sidebar history={history} onSelect={handleSelectHistory} onLoadMore={loadMoreHistory} />
+        <Sidebar
+          history={history}
+          onSelect={handleSelectHistory}
+          onLoadMore={loadMoreHistory}
+        />
         {chatMode ? (
           <Chatbot
             query={chatQuery}

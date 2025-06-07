@@ -52,7 +52,7 @@ function Chatbot({ query, goHome }) {
   const fetchResponse = async (q) => {
     try {
       const response = await fetch(
-        "https://9b0d-210-119-104-214.ngrok-free.app/news/chat",
+        "https://76c9-175-115-149-2.ngrok-free.app/news/chat",
         {
           method: "POST",
           headers: {
