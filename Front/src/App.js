@@ -54,7 +54,11 @@ function App() {
   };
 
   const handleLogin = async (token, email) => {
+<<<<<<< HEAD
     setIsLoginPage(false); // 🟢 먼저 false로 설정하여 렌더링 유도
+=======
+    setIsLoginPage(false);
+>>>>>>> 31b39005 (기록 열람 추가..)
     localStorage.setItem("accessToken", token);
     localStorage.setItem("userEmail", email);
     setIsLoggedIn(true);
@@ -100,9 +104,17 @@ function App() {
     setChatMode(true);
   };
 
-  const handleSelectHistory = (item) => {
-    setSelectedHistory(item);
-    setChatMode(true);
+  const handleSelectHistory = async (item) => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      const res = await axiosInstance.get(`/news/historyContent/${item.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSelectedHistory(res.data.data);
+      setChatMode(true);
+    } catch (err) {
+      console.error("❌ 검증 상세 조회 실패:", err);
+    }
   };
 
   const updateCurrentHistory = useCallback(
@@ -152,7 +164,7 @@ function App() {
           <Chatbot
             query={chatQuery}
             goHome={goHome}
-            initialMessages={selectedHistory?.messages}
+            initialMessages={selectedHistory?.messages || [{ sender: 'bot', text: selectedHistory?.summary }]}
             updateHistory={updateCurrentHistory}
           />
         ) : (
