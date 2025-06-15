@@ -32,7 +32,7 @@ function App() {
   const fetchHistory = async (token, pageNum = 0) => {
     try {
       const config = {
-        headers: { Authorization: token },
+        headers: { Authorization: `Bearer ${token}` },
         params: { page: pageNum, limit: 10 },
       };
       const res = await axiosInstance.get(`/news/history`, config);
@@ -40,7 +40,7 @@ function App() {
       const newData = res.data.data.verifications || [];
       const hasNext = res.data.data.pageInfo?.hasNext;
 
-      setHistory((prev) => (pageNum === 0 ? newData : [prev, newData]));
+      setHistory((prev) => (pageNum === 0 ? newData : [...prev, ...newData]));
       setHasMore(hasNext);
     } catch (err) {
       console.error("❌ 기록 불러오기 실패:", err);
@@ -103,11 +103,11 @@ function App() {
     setChatMode(true);
   };
 
-  const handleSelectHistory = async (item) => {
+  const handleSelectHistory = async (id) => {
     try {
       const token = localStorage.getItem("accessToken");
-      const res = await axiosInstance.get(`/news/historyContent/${item.id}`, {
-        headers: { Authorization: token },
+      const res = await axiosInstance.get(`/news/historyContent/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
       });
       setSelectedHistory(res.data.data);
       setChatMode(true);

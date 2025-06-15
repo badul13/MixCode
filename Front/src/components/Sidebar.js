@@ -1,19 +1,38 @@
-import React from "react";
-import "../styles/App.css";
+import React, { useRef, useEffect } from 'react';
+import '../styles/App.css';
 
 function Sidebar({ history, onSelect, onLoadMore }) {
-  const handleScroll = (e) => {
-    const bottom =
-      e.target.scrollHeight - e.target.scrollTop === e.target.clientHeight;
-    if (bottom && onLoadMore) onLoadMore();
+  const listRef = useRef(null);
+
+  // 스크롤 이벤트 핸들러
+  const handleScroll = () => {
+    const container = listRef.current;
+    if (!container) return;
+
+    if (container.scrollTop + container.clientHeight >= container.scrollHeight - 10) {
+      onLoadMore(); // 하단에 도달하면 추가 데이터 요청
+    }
   };
 
+  useEffect(() => {
+    const container = listRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, []);
+
   return (
-    <div className="sidebar" onScroll={handleScroll}>
+    <div className="sidebar" ref={listRef}>
       <h2>판별 기록</h2>
       <ul>
         {history.map((item) => (
-          <li key={item.id} onClick={() => onSelect(item)}>
+          <li key={item.id} onClick={() => onSelect(item.id)}>
             {item.title}
           </li>
         ))}

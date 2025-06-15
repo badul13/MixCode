@@ -16,13 +16,17 @@ function Chatbot({ query, goHome, initialMessages = null, updateHistory }) {
   const fetchResponse = useCallback(
     async (q) => {
       try {
-        const res = await axiosInstance.post("/news/chat", { text: q });
+        const res = await axiosInstance.post("/news/chat", { message: q });
         const { title, chat, timestamp } = res.data;
-        setMessages([{ sender: "user", text: q }, ...chat]);
+
+        setMessages((prev) => [...prev, ...chat]);
         updateHistory(chat, title, timestamp);
       } catch (err) {
         console.error("❌ 서버 응답 오류:", err);
-        setMessages([{ sender: "bot", text: "⚠️ 서버와 연결할 수 없습니다." }]);
+        setMessages((prev) => [
+          ...prev,
+          { sender: "bot", text: "⚠️ 서버와 연결할 수 없습니다." },
+        ]);
       }
     },
     [updateHistory]
