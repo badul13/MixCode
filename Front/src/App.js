@@ -29,24 +29,32 @@ function App() {
     }
   }, []);
 
-  const fetchHistory = async (token, pageNum = 0) => {
-    try {
-      const config = {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { page: pageNum, limit: 10 },
-      };
-      const res = await axiosInstance.get(`/news/history`, config);
+  
+const fetchHistory = async (token, pageNum = 0) => {
+  try {
+    const config = {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { page: pageNum, size: 10 }, // ✅ 여기 수정됨
+    };
+    const res = await axiosInstance.get(`/news/history`, config);
 
-      const newData = res.data.data.verifications || [];
-      const hasNext = res.data.data.pageInfo?.hasNext;
-
-      setHistory((prev) => (pageNum === 0 ? newData : [...prev, ...newData]));
-      setHasMore(hasNext);
-    } catch (err) {
-      console.error("❌ 기록 불러오기 실패:", err);
-      setHasMore(false);
+    if (typeof res.data === "string" && res.data.startsWith("<!DOCTYPE html>")) {
+      console.error("❌ HTML 응답 수신됨 - API 주소 또는 서버 연결을 확인하세요.");
+      return;
     }
-  };
+
+    console.log("📥 응답 데이터:", res.data);
+
+    const newData = res.data?.data?.verifications || [];
+    const hasNext = res.data?.data?.pageInfo?.hasNext ?? false;
+
+    setHistory((prev) => (pageNum === 0 ? newData : [...prev, ...newData]));
+    setHasMore(hasNext);
+  } catch (err) {
+    console.error("❌ 기록 불러오기 실패:", err);
+    setHasMore(false);
+  }
+};
 
   const loadMoreHistory = () => {
     if (!hasMore) return;
