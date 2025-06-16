@@ -5,15 +5,22 @@ import pandas as pd
 from flask import Flask, request, jsonify
 from typing import List
 from dotenv import load_dotenv
-from transformers import PreTrainedTokenizerFast
-from transformers import BertTokenizer
-from transformers import BertForSequenceClassification
-from transformers import PreTrainedTokenizerFast, BartForConditionalGeneration
+from transformers import PreTrainedTokenizerFast, BartForConditionalGeneration, BertTokenizer, BertForSequenceClassification, AutoTokenizer
 from naver_news_crawler import NaverNewsCrawler
-from transformers import AutoTokenizer
 from pyngrok import ngrok
 from flask_cors import CORS
 from rag_engine import RAGEngine
+import numpy as np
+import datetime
+
+# 환경변수 로드
+load_dotenv()
+
+# ngrok 토큰 환경변수에서 불러오기
+
+load_dotenv()
+
+ngrok.set_auth_token("2xwNdP6n13UgVoHisO4aafDb8kq_2J1uW4qGbkwE3CbDztGKn")
 
 # RAG 엔진 인스턴스 생성
 vector_store = RAGEngine()
@@ -22,10 +29,6 @@ vector_store = RAGEngine()
 df = pd.read_csv('outputdata.csv')
 docs = df['text'].dropna().tolist()
 vector_store.build_index(docs)
-
-load_dotenv()
-
-ngrok.set_auth_token("2xwNdP6n13UgVoHisO4aafDb8kq_2J1uW4qGbkwE3CbDztGKn")
 
 app = Flask(__name__)
 CORS(app)
@@ -46,6 +49,10 @@ class KcElectraClassifier:
         self.device = device
         self.tokenizer = AutoTokenizer.from_pretrained("monologg/kobert")
         self.model = BertForSequenceClassification.from_pretrained("monologg/kobert", num_labels=2)
+        
+        # 이 줄 추가: 사전 학습된 모델 파라미터 로드
+        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        
         self.model.to(self.device)
         self.model.eval()
 
@@ -64,6 +71,10 @@ class RagKoBertClassifier:
         self.device = device
         self.tokenizer = BertTokenizer.from_pretrained("monologg/kobert")
         self.model = BertForSequenceClassification.from_pretrained("monologg/kobert", num_labels=2)
+        
+        # 가중치 불러오기 추가
+        self.model.load_state_dict(torch.load(model_path, map_location=self.device))
+        
         self.model.to(self.device)
         self.model.eval()
 
@@ -125,64 +136,76 @@ def generate_answer(query: str, docs: List[str]):
     confidence = 0.9  # 필요시 수정
     return answer, confidence
 
+def convert_numpy(obj):
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: convert_numpy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy(i) for i in obj]
+    elif isinstance(obj, (np.float32, np.float64)):
+        return float(obj)
+    elif isinstance(obj, (np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, bytes):
+        return obj.decode('utf-8')
+    else:
+        return obj
+
 @app.route("/verify", methods=["POST"])
 def verify_news():
     try:
         data = request.get_json()
+        if not data or "text" not in data:
+            return jsonify({"error": "'text' 필드가 요청에 포함되어야 합니다."}), 400
+
         text = data["text"]
 
         # 1단계 예측
         real_prob_1, fake_prob_1 = kc_electra_model.predict_prob(text)
 
+        # 키워드 추출 및 관련 뉴스 크롤링
         keywords = crawler.extract_keywords(text)
         urls = crawler.search_news_urls(keywords)
         docs = crawler.crawl_articles(urls)
 
-        if not docs:
-            return jsonify({
-                "error": "관련 뉴스 기사 없음",
-                "real_1": round(real_prob_1, 3),
-                "fake_1": round(fake_prob_1, 3),
-                "keywords": keywords,
-                "urls": urls,
-                "ragAnswer": "",
-                "confidence": 0.0,
-                "summaries": []
-            }), 200
-
-        # 인덱스 재구축
+        # RAG 인덱스 재빌드 및 검색
         vector_store.build_index(docs)
         top_docs = vector_store.search(text, top_k=3)
 
+        # RAG 답변 생성 및 요약
         answer, rag_confidence = generate_answer(text, top_docs)
         summaries = summarize_docs_korean(top_docs)
         summary_concat = " ".join(summaries)
 
-        # 2단계 RAG 분류기 예측
+        # 2단계 RAG 기반 분류
         rag_real_prob, rag_fake_prob, rag_label = rag_kobert_model.predict_rag_prob(text, summary_concat)
 
-        combined_real, combined_fake = combined_prob(
-            real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob, weight=0.5
-        )
+        # 뉴스 제목 (urls에서 실제 제목을 얻으려면 크롤러 수정 필요)
+        title = urls[0] if urls else ""
+        content = top_docs[0] if top_docs else ""
+        summary_text = summaries[0] if summaries else ""
 
-        return jsonify({
-            "real_1": float(round(real_prob_1, 3)),
-            "fake_1": float(round(fake_prob_1, 3)),
-            "rag_real": float(round(rag_real_prob, 3)),
-            "rag_fake": float(round(rag_fake_prob, 3)),
-            "combined_real": float(round(combined_real, 3)),
-            "combined_fake": float(round(combined_fake, 3)),
-            "rag_confidence": float(round(rag_confidence, 3)),
-            "label": int(rag_label),
-            "keywords": keywords,
-            "urls": urls,
-            "ragAnswer": answer,
-            "confidence": float(round(rag_confidence, 3)),
-            "summaries": summaries
-        }), 200
+        response_data = {
+            "query": text,
+            "news_title": title,
+            "text": content,
+            "summary": summary_text,
+            "label": int(fake_prob_1 > 0.5),
+            "fake_prob": str(float(fake_prob_1)),
+            "rag_prob": str(float(rag_fake_prob)),
+            "real_prob_percent": round((1 - float(fake_prob_1)) * 100, 2),
+            "fake_prob_percent": round(float(fake_prob_1) * 100, 2),
+            "rag_answer": answer,
+            "timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
 
+        # numpy 타입 JSON 직렬화 대응
+        response_data = convert_numpy(response_data)
+
+        return jsonify(response_data)
 
     except Exception as e:
+        print(f"verify_news error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/ngrok_url")
@@ -215,7 +238,7 @@ def final_decision(real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob, thres
         return 0, combined_fake
 
 def cli_loop():
-    print("뉴스 진위 예측 + RAG 기반 뉴스 검색 챗봇 시작. 종료하려면 'exit' 입력\n")
+    print("뉴스 검색 챗봇 시작합니다! 종료하려면 'exit' 입력하세요.\n")
     while True:
         text = input("문장을 입력하세요: ")
         if text.lower() == "exit":
@@ -246,42 +269,36 @@ def cli_loop():
 
             print("🔑 핵심 키워드:", ", ".join(keywords))
             print("🔗 관련 기사 URL 목록:", urls)
+
             print(f"\n💡 RAG 응답:\n{answer}")
-            print(f"🔍 신뢰도: {rag_confidence:.3f}")
+
             print("📝 요약:\n")
             for i, summary in enumerate(summaries, 1):
                 s_clean = clean_summary(summary)
                 if s_clean:
                     print(f"{i}. {s_clean}\n")
 
-            print("📊 신뢰도 분석 결과:")
-            print(f"- KoBERT 분류 결과: {'가짜뉴스' if fake_prob_1 >= 0.5 else '진짜뉴스'} ({fake_prob_1:.3f} 확률)")
-            print(f"- RAG 기반 분류 결과: {'가짜뉴스' if rag_fake_prob >= 0.5 else '진짜뉴스'} ({rag_confidence:.3f} 확률)\n")
+            print("🔍 신뢰도 분석 결과:")
+            print(f"- KoBERT 분류 결과: {'가짜뉴스' if fake_prob_1 >= 0.5 else '진짜뉴스'} ({fake_prob_1:.3f}%)")
+            print(f"- RAG 기반 분류 결과: {'가짜뉴스' if rag_fake_prob >= 0.5 else '진짜뉴스'} ({rag_confidence:.3f}%)\n")
 
-            print(f"\n🧾 진짜뉴스 확률: {combined_real * 100:.2f}%")
-            print(f"🧾 가짜뉴스 확률: {combined_fake * 100:.2f}%")
+            print(f"\n⭕ 진짜뉴스 확률: {combined_real * 100:.2f}%")
+            print(f"❌ 가짜뉴스 확률: {combined_fake * 100:.2f}%")
 
-            final_label, final_confidence = final_decision(real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob)
-            if final_label == 1:
-                print("\n 최종 판단: 진짜일 가능성이 높은 기사입니다!")
-            else:
-                print("\n 최종 판단: 가짜일 가능성이 높은 기사입니다!")
-
-            print("\n" + "=" * 50 + "\n")
+            final_label, final_conf = final_decision(real_prob_1, fake_prob_1, rag_real_prob, rag_fake_prob)
+            label_text = "진짜뉴스" if final_label == 1 else "가짜뉴스"
+            print(f"\n▶ 최종 판단: {label_text} (신뢰도 {final_conf * 100:.2f}%)\n")
 
         except Exception as e:
-            print(f"❗ 오류 발생: {e}")
-
-def run_flask():
-    app.run(host="0.0.0.0", port=8070)
+            print(f"오류 발생: {e}\n")
 
 if __name__ == "__main__":
-    port = 8070
-    public_url = ngrok.connect(port).public_url
-    print(f" * ngrok tunnel URL: {public_url}")
+    # ngrok 터널 시작
+    public_url = ngrok.connect(5000).public_url
+    print(f" * ngrok URL: {public_url}")
 
-    # Flask 서버 별도 스레드로 실행
-    threading.Thread(target=run_flask).start()
+    # Flask 서버 별도 스레드에서 실행
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)).start()
 
-    # CLI 실행
+    # CLI 루프 시작
     cli_loop()
