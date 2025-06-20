@@ -1,0 +1,92 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.0'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    implementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+
+    implementation 'org.springframework.boot:spring-boot-starter'
+    runtimeOnly 'com.mysql:mysql-connector-j'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation group: 'io.jsonwebtoken', name: 'jjwt-api', version: '0.11.5'
+    runtimeOnly group: 'io.jsonwebtoken', name: 'jjwt-impl', version: '0.11.5'
+    runtimeOnly group: 'io.jsonwebtoken', name: 'jjwt-jackson', version: '0.11.5'
+
+    // sockjs
+    implementation 'org.webjars:sockjs-client:1.5.1'
+    // stomp
+    implementation 'org.webjars:stomp-websocket:2.3.4'
+    // gson
+    implementation 'com.google.code.gson:gson:2.11.0'
+
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+
+    implementation 'nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect'
+
+//    implementation 'org.springframework.cloud:spring-cloud-starter-aws:2.2.6.RELEASE'
+//    implementation 'software.amazon.awssdk:s3:2.20.XX'
+//
+//    implementation 'software.amazon.awssdk:s3:2.25.32'
+//    implementation 'software.amazon.awssdk:auth:2.25.32'
+
+    implementation 'org.springframework.cloud:spring-cloud-starter-aws:2.2.6.RELEASE'
+    implementation 'com.amazonaws:aws-java-sdk-s3:1.12.767'
+    implementation 'software.amazon.awssdk:s3:2.27.3'
+    implementation 'software.amazon.awssdk:s3control:2.27.3'
+    implementation 'software.amazon.awssdk:s3outposts:2.27.3'
+
+    implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+    // WireMock
+    testImplementation 'com.github.tomakehurst:wiremock-jre8:2.35.0'
+    testImplementation 'org.eclipse.jetty:jetty-server:9.4.51.v20230217'
+    testImplementation 'org.eclipse.jetty:jetty-servlet:9.4.51.v20230217'
+    testImplementation 'org.eclipse.jetty:jetty-util:9.4.51.v20230217'
+}
+
+configurations.all {
+    resolutionStrategy.eachDependency { details ->
+        if (details.requested.group == 'org.eclipse.jetty') {
+            details.useVersion '9.4.51.v20230217'
+        }
+    }
+}
+
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
